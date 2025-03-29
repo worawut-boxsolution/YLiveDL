@@ -1,0 +1,345 @@
+﻿@page "/Download"
+ 
+@inject YouTubeDownloadService YouTubeDownloader
+ 
+@using YoutubeExplode.Videos
+
+@using System.Diagnostics
+@using System.Text.RegularExpressions
+@using YLiveDL.Util
+<style>
+    .progress-container {
+        width: 100%;
+        background-color: #f3f3f3;
+        border-radius: 10px;
+        margin: 20px 0;
+    }
+
+    .progress-bar {
+        height: 20px;
+        border-radius: 10px;
+        background-color: #4CAF50;
+        width: 0%;
+        transition: width 0.3s ease;
+    }
+
+    .status-container {
+        margin: 20px 0;
+        padding: 15px;
+        border-radius: 5px;
+        background-color: #f8f9fa;
+    }
+
+    .video-info {
+        margin: 15px 0;
+        padding: 10px;
+        background-color: #e9ecef;
+        border-radius: 5px;
+    }
+
+    .btn-download {
+        background-color: #007bff;
+        color: white;
+        padding: 10px 20px;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+        font-size: 16px;
+    }
+
+        .btn-download:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+
+    /* เพิ่มสไตล์สำหรับ Merge Status */
+    .merge-status {
+        margin: 15px 0;
+        padding: 10px;
+        background-color: #e6f7ff;
+        border-radius: 5px;
+        border-left: 4px solid #1890ff;
+    }
+
+    .merge-progress {
+        margin-top: 5px;
+        color: #666;
+        font-family: monospace;
+    }
+</style>
+
+<div class="container">
+    <h1>YouTube Video Downloader</h1>
+
+    <div class="input-group mb-3">
+        <input type="text"
+               class="form-control"
+               placeholder="วางลิงก์ YouTube ที่นี่"
+               @bind="videoUrl"
+               @onkeypress="HandleKeyPress" />
+        <div class="input-group-append">
+            <button class="btn-download"
+                    @onclick="StartDownload"
+                    disabled="@(isDownloading || string.IsNullOrWhiteSpace(videoUrl))">
+                @downloadButtonText
+            </button>
+
+            <button class="btn-download"
+                    @onclick="CancelDownload"
+                    disabled="@(isDownloading == false)">
+                ยกเลิก
+            </button>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrEmpty(videoTitle))
+    {
+        <div class="video-info">
+            <h4>@videoTitle</h4>
+            @if (!string.IsNullOrEmpty(thumbnailUrl))
+            {
+                <img src="@thumbnailUrl" style="max-width: 200px; max-height: 150px;" />
+            }
+            <p>ระยะเวลา: @duration</p>
+            <p>เป็นไลฟ์สตรีม: @(isLiveStream ? "ใช่" : "ไม่ใช่")</p>
+        </div>
+    }
+
+    @if (isDownloading)
+    {
+        <div class="progress-container">
+            <div class="progress-bar" style="width: @(progressPercentage)%;"></div>
+        </div>
+        <div class="text-center">
+            <p>@progressPercentage.ToString("0.00")%</p>
+        </div>
+
+        <div class="status-container">
+            <h5>สถานะ:</h5>
+            <p>@statusMessage</p>
+            <p>ความเร็ว: @downloadSpeed</p>
+            <p>ดาวน์โหลดแล้ว: @downloadedSize</p>
+            <p>เวลาที่เหลือ: @timeRemaining</p>
+            
+        </div>
+
+        @if (isMerging)
+        {
+            <div class="merge-status">
+                <h4>สถานะการรวมไฟล์</h4>
+                <div class="merge-progress">
+                    @mergeStatus
+                    @if (!string.IsNullOrEmpty(mergeTime))
+                    {
+                        <br />
+                        <span>เวลา: @mergeTime</span>
+                    }
+                </div>
+            </div>
+        }
+
+        <button class="btn btn-danger" @onclick="CancelDownload">
+            ยกเลิกการดาวน์โหลด
+        </button>
+    }
+    else if (!string.IsNullOrEmpty(statusMessage))
+    {
+        <div class="alert alert-info">
+            @statusMessage
+        </div>
+    }
+
+    @if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <div class="alert alert-danger">
+            @errorMessage
+        </div>
+    }
+</div>
+
+@code {
+    private string videoUrl = "";
+    private string videoTitle = "";
+    private string thumbnailUrl = "";
+    private string duration = "";
+    private bool isLiveStream = false;
+    private string statusMessage = "";
+    private string errorMessage = "";
+    private double progressPercentage = 0;
+    private string downloadSpeed = "";
+    private string downloadedSize = "";
+    private string timeRemaining = "";
+    private bool isDownloading = false;
+    private string downloadButtonText = "ดาวน์โหลด";
+
+    private CancellationTokenSource cancellationTokenSource;
+
+
+    private string mergeStatus = "";
+    private string mergeTime = "";
+    private bool isMerging = false;
+     
+    private async Task StartDownload()
+    {
+        try
+        {
+         
+            // ตรวจสอบและขอสิทธิ์ก่อน
+            var hasPermission = await CheckAndRequestStoragePermission();
+
+            if (!hasPermission)
+            {
+                statusMessage = "ไม่ได้รับสิทธิ์ในการบันทึกไฟล์";
+                return;
+            }
+            // รีเซ็ตค่าทั้งหมด
+            ResetDownloadStatus();
+            isDownloading = true;
+            downloadButtonText = "กำลังดาวน์โหลด...";
+            cancellationTokenSource = new CancellationTokenSource();
+
+            // ดึงข้อมูลวิดีโอ
+            statusMessage = "กำลังดึงข้อมูลวิดีโอ...";
+            var video = await YouTubeDownloader.GetVideoInfoAsync(videoUrl);
+            videoTitle = video.VideoData.Title;
+            thumbnailUrl = video.VideoData.Thumbnails.OrderByDescending(t => t.Resolution.Area).FirstOrDefault()?.Url;
+            duration = video.VideoData.Duration?.ToString() ?? "N/A";
+            isLiveStream = video.VideoData.Duration == null;
+
+            // กำหนดชื่อไฟล์
+            var fileName = $"{videoTitle}.mp4".ReplaceInvalidFileNameChars("_");
+            var outputPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyVideos), fileName);
+
+            // สร้าง Progress reporter
+            var progress = new Progress<double>(p =>
+            {
+                progressPercentage = p * 100;
+                StateHasChanged(); // อัปเดต UI
+            });
+
+            // เริ่มดาวน์โหลด
+            statusMessage = "กำลังเริ่มดาวน์โหลด...";
+            var stopwatch = Stopwatch.StartNew();
+            var lastBytes = 0L;
+            var totalSize = 0L; // เริ่มต้นด้วย 0
+       
+            var timer = new System.Timers.Timer(1000);
+            timer.Elapsed += (sender, args) =>
+            {
+                // คำนวณความเร็วการดาวน์โหลด (สามารถปรับปรุงให้ดีขึ้นได้)
+                var currentBytes = (long)(progressPercentage / 100 * video.FileSize);
+                var bytesDiff = currentBytes - lastBytes;
+                lastBytes = currentBytes;
+
+                downloadSpeed = FormatBytes(bytesDiff) + "/s";
+                downloadedSize = FormatBytes(currentBytes);
+
+                if (progressPercentage > 0)
+                {
+                    var remainingTime = (100 - progressPercentage) / progressPercentage * stopwatch.Elapsed.TotalSeconds;
+                    timeRemaining = TimeSpan.FromSeconds(remainingTime).ToString(@"hh\:mm\:ss");
+                }
+
+                InvokeAsync(StateHasChanged);
+            };
+
+            // Merg Setting
+            var mergeProgress = new Progress<string>(status =>
+            {
+                mergeStatus = status;
+
+                // อัปเดตเวลาใน mergeTime ถ้ามีข้อมูล
+                if (status.Contains("time="))
+                {
+                    var match = Regex.Match(status, @"time=(\d{2}:\d{2}:\d{2})");
+                    if (match.Success)
+                    {
+                        mergeTime = match.Groups[1].Value;
+                    }
+                }
+
+                StateHasChanged();
+            });
+            timer.Start();
+           
+
+            await YouTubeDownloader.DownloadVideoAsync(
+                videoUrl,
+                outputPath,
+                progress,
+                mergeProgress,
+                cancellationTokenSource.Token);
+
+            statusMessage = "ดาวน์โหลดเสร็จสมบูรณ์!";
+            errorMessage = "";
+        }
+        catch (OperationCanceledException)
+        {
+            statusMessage = "การดาวน์โหลดถูกยกเลิก";
+            errorMessage = "";
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"เกิดข้อผิดพลาด: {ex.Message}";
+            statusMessage = "";
+        }
+        finally
+        {
+            isDownloading = false;
+            downloadButtonText = "ดาวน์โหลด";
+            StateHasChanged();
+            cancellationTokenSource?.Dispose();
+            cancellationTokenSource = null;
+        }
+    }
+
+    private void CancelDownload()
+    {
+        cancellationTokenSource?.Cancel();
+        statusMessage = "กำลังยกเลิกการดาวน์โหลด...";
+        
+    }
+
+    private void ResetDownloadStatus()
+    {
+        progressPercentage = 0;
+        downloadSpeed = "";
+        downloadedSize = "";
+        timeRemaining = "";
+        errorMessage = "";
+    }
+
+    private string FormatBytes(long bytes)
+    {
+        const long ONE_KB = 1024;
+        const long ONE_MB = ONE_KB * 1024;
+        const long ONE_GB = ONE_MB * 1024;
+        const long ONE_TB = ONE_GB * 1024;
+
+        return bytes switch
+        {
+            _ when bytes >= ONE_TB => $"{(double)bytes / ONE_TB:0.##} TB",
+            _ when bytes >= ONE_GB => $"{(double)bytes / ONE_GB:0.##} GB",
+            _ when bytes >= ONE_MB => $"{(double)bytes / ONE_MB:0.##} MB",
+            _ when bytes >= ONE_KB => $"{(double)bytes / ONE_KB:0.##} KB",
+            _ => $"{bytes} B"
+        };
+    }
+
+    private void HandleKeyPress(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            StartDownload();
+        }
+    }
+    public async Task<bool> CheckAndRequestStoragePermission()
+    {
+        var status = await Permissions.CheckStatusAsync<Permissions.StorageWrite>();
+        if (status != PermissionStatus.Granted)
+        {
+            status = await Permissions.RequestAsync<Permissions.StorageWrite>();
+        }
+        return status == PermissionStatus.Granted;
+    }
+}
