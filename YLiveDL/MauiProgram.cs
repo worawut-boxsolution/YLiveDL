@@ -2,6 +2,7 @@
 using BlazorDownloadFile;
 using YoutubeExplode;
 using YLiveDL.Util;
+ 
 namespace YLiveDL
 {
     public static class MauiProgram
@@ -19,9 +20,12 @@ namespace YLiveDL
             builder.Services.AddMauiBlazorWebView();
             builder.Services.AddBlazorDownloadFile();
 
+            builder.Services.AddSingleton<YtDlpService>();
+            builder.Services.AddSingleton<YtDlpServiceLive>();
             builder.Services.AddSingleton<YouTubeDownloadService>();
             builder.Services.AddSingleton<YoutubeClient>();
             builder.Services.AddSingleton<YouTubeLiveDownloadService>();
+            //builder.Services.AddSingleton<IFileSaver, FileSaver>();
 #if DEBUG
             builder.Services.AddBlazorWebViewDeveloperTools();
 

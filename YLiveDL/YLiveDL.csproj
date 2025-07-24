@@ -58,11 +58,33 @@
     </ItemGroup>
 
     <ItemGroup>
+      <AndroidResource Remove="utils\_internal\**" />
+      <Compile Remove="utils\_internal\**" />
+      <Content Remove="utils\_internal\**" />
+      <EmbeddedResource Remove="utils\_internal\**" />
+      <MauiXaml Remove="utils\_internal\**" />
+      <None Remove="utils\_internal\**" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <Compile Remove="Util\YtDlpProgressInfo.cs" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <Content Remove="Components\Pages\Download.razor" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <None Include="Util\YtDlpProgressInfo.cs" />
+    </ItemGroup>
+
+    <ItemGroup>
         <PackageReference Include="BlazorDownloadFile" Version="2.4.0.2" />
         <PackageReference Include="Microsoft.Maui.Controls" Version="$(MauiVersion)" />
         <PackageReference Include="Microsoft.Maui.Controls.Compatibility" Version="$(MauiVersion)" />
         <PackageReference Include="Microsoft.AspNetCore.Components.WebView.Maui" Version="$(MauiVersion)" />
         <PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="8.0.0" />
+        <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
         <PackageReference Include="YoutubeExplode" Version="6.5.4" />
     </ItemGroup>
 

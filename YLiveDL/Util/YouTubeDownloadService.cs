@@ -38,7 +38,9 @@ public class YouTubeDownloadService
             video_.Keywords = _video.Keywords?.ToList();
             video_.Engagement = _video.Engagement;
             // ดึงข้อมูลสตรีมเพื่อคำนวณขนาดไฟล์
-            var streamManifest = await _youtube.Videos.Streams.GetManifestAsync(videoUrl);
+            //var streamManifest = await _youtube.Videos.Streams.GetManifestAsync(videoUrl);
+
+            var streamManifest = await _youtube.Videos.Streams.GetManifestAsync(_video.Id); // ใช้ _video.Id
 
             // คำนวณขนาดไฟล์โดยรวมสตรีมวิดีโอและเสียง
             var videoStream = streamManifest.GetVideoStreams().GetWithHighestVideoQuality();
@@ -97,7 +99,8 @@ public class YouTubeDownloadService
             Console.WriteLine($"กำลังประมวลผลวิดีโอ: {video.Title}");
 
             // 2. ดึงข้อมูลสตรีม
-            var streamManifest = await _youtube.Videos.Streams.GetManifestAsync(videoUrl, cancellationToken);
+            //var streamManifest = await _youtube.Videos.Streams.GetManifestAsync(videoUrl, cancellationToken);
+            var streamManifest = await _youtube.Videos.Streams.GetManifestAsync(video.Id, cancellationToken);
 
             // 3. พยายามหาสตรีมแบบรวม (muxed) ก่อน
             var muxedStreams = streamManifest.GetMuxedStreams().ToList();
